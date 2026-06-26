@@ -69,6 +69,132 @@ Your channel appears in the Mimir web UI under **Sources**.
 
 ---
 
+## Shared utilities (`mimir_utils.py`)
+
+The SDK ships a standalone utility module — `mimir_utils.py` — that provides the infrastructure patterns every channel needs: JSON caching, JSON-backed CRUD stores, settings dataclass helpers, and HTTP fetch wrappers.
+
+### Two ways to use it
+
+**Option A — pip install (recommended for new channels)**
+
+Install the full SDK and import directly:
+
+```python
+from mimir_source_sdk import JsonCache, JsonStore, SettingsMixin, http_session, safe_fetch
+```
+
+Everything in `mimir_utils.py` is re-exported from the package root.
+
+**Option B — vendor the file (zero external dependencies)**
+
+Copy the single file into your channel directory:
+
+```bash
+curl -O https://raw.githubusercontent.com/ryanlane/mimir-source-sdk/main/mimir_utils.py
+# or: cp mimir_utils.py my-channel/channels/my_channel/
+```
+
+Then import it directly:
+
+```python
+from mimir_utils import JsonCache, JsonStore, SettingsMixin, http_session, safe_fetch
+```
+
+No pip install, no network access needed at runtime. The only dependency is `requests` (for `http_session` and `safe_fetch`), which your channel almost certainly already lists in `requirements.txt`.
+
+Use this option when your channel must be fully self-contained, when you're deploying to a Pi without reliable internet access, or when you want to pin to a specific version of the utilities independently of the SDK version.
+
+> **Keeping in sync:** `mimir_utils.py` at the repo root and `src/mimir_source_sdk/mimir_utils.py` in the package are identical files. Any bug fix is committed to both in the same change.
+
+### What's in `mimir_utils.py`
+
+| Name | Type | What it does |
+|---|---|---|
+| `SettingsMixin` | class | Dataclass mixin — `to_dict()`, `to_public_dict()` (masks API keys), `from_dict()` |
+| `JsonCache` | class | JSON-file-backed key/value cache with TTL — subclass and override `_make_key()` |
+| `JsonStore` | class | JSON-file-backed CRUD list — subclass and implement `_from_dict()`, `_to_dict()` |
+| `http_session()` | function | `requests.Session` with Mimir User-Agent pre-set |
+| `safe_fetch()` | function | GET wrapper that returns `(data, error)` instead of raising |
+| `validate_key_nonempty()` | function | Quick non-empty check for API keys — returns `{valid, error}` |
+
+### Example — settings with masked API key
+
+```python
+from dataclasses import dataclass
+from mimir_utils import SettingsMixin  # or: from mimir_source_sdk import SettingsMixin
+
+@dataclass
+class Settings(SettingsMixin):
+    api_key: str = ""
+    city: str = "New York"
+    cache_minutes: int = 30
+
+s = Settings.from_dict({"api_key": "sk-abc1234567890", "city": "Boston", "unknown": True})
+s.to_public_dict()
+# {"api_key": "••••••••7890", "city": "Boston", "cache_minutes": 30}
+```
+
+### Example — JSON cache with TTL
+
+```python
+from pathlib import Path
+from mimir_utils import JsonCache
+
+class WeatherCache(JsonCache):
+    def _make_key(self, lat, lon, units):
+        return f"{lat:.2f}_{lon:.2f}_{units}"
+
+cache = WeatherCache(Path("data/weather_cache.json"))
+
+if cache.needs_refresh(lat, lon, "metric", ttl_minutes=30):
+    data = fetch_from_api(lat, lon)
+    cache.set(data, lat, lon, "metric")
+
+entry = cache.get(lat, lon, "metric")
+```
+
+### Example — CRUD store for sub-items
+
+```python
+from dataclasses import dataclass, asdict
+from mimir_utils import JsonStore
+
+@dataclass
+class City:
+    id: str
+    name: str
+    lat: float
+    lon: float
+
+class CityStore(JsonStore[City]):
+    def _from_dict(self, d): return City(**d)
+    def _to_dict(self, item): return asdict(item)
+
+store = CityStore(Path("data/cities.json"))
+city = store.create({"name": "Boston", "lat": 42.36, "lon": -71.06})
+store.update(city.id, {"name": "Boston, MA"})
+store.delete(city.id)
+```
+
+### Example — safe HTTP fetch
+
+```python
+from mimir_utils import http_session, safe_fetch
+
+session = http_session()
+data, err = safe_fetch(
+    "https://api.openweathermap.org/data/2.5/weather",
+    params={"q": "Boston", "appid": api_key},
+    session=session,
+)
+if err:
+    logger.error("Weather fetch failed: %s", err)
+else:
+    process(data)
+```
+
+---
+
 ## How channels work
 
 ```
