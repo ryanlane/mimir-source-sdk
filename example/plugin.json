@@ -1,0 +1,47 @@
+{
+  "id": "com.mimir.testpattern",
+  "name": "Test Pattern",
+  "description": "Diagnostic test images: color bars, checkerboard, and debug card.",
+  "version": "1.0.0",
+  "author": "Mimir",
+  "icon": "🧪",
+  "type": "embedded",
+  "entry_point": "channel.py",
+  "class_name": "TestPatternChannel",
+  "tags": ["debug", "test", "developer"],
+
+  "requirements": {
+    "python": ">=3.10",
+    "dependencies": ["mimir-source-sdk>=1.0.0"]
+  },
+
+  "update_schedule": {
+    "unit": "minutes",
+    "duration": 1,
+    "settings_driven": false
+  },
+
+  "settings": {
+    "defaults": {
+      "pattern": "color_bars",
+      "label": "Test Pattern"
+    },
+    "schema": {
+      "type": "object",
+      "properties": {
+        "pattern": {
+          "type": "string",
+          "title": "Test Pattern",
+          "description": "Which diagnostic image to display.",
+          "enum": ["color_bars", "checkerboard", "debug_card"],
+          "enumLabels": ["Color Bars", "Checkerboard", "Debug Card"]
+        },
+        "label": {
+          "type": "string",
+          "title": "Label",
+          "description": "Text shown in the footer of color bar and checkerboard images."
+        }
+      }
+    }
+  }
+}
